@@ -144,8 +144,6 @@ void Deflate(std::vector<unsigned char>& Out, const std::vector<unsigned char>& 
 
 	deflateEnd(&Stream);
 
-	Print("%d, %d\n", Stream.avail_out, Stream.avail_in);
-
 	Out.resize(Out.size() - Stream.avail_out);
 }
 
@@ -429,8 +427,6 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 				g_iInflatedSize = InflatedFile.size();
 
 				DeletedCommand = true;
-
-				Print("Removing command at %d\n", FilePos);
 			};
 
 			[&]
