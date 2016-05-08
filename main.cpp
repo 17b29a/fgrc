@@ -118,11 +118,12 @@ void Deflate(std::vector<unsigned char>& Out, const std::vector<unsigned char>& 
 		Pos += 1024;
 	} while(Stream.avail_out == 0 && Stream.avail_in > 0);
 
-	Out.resize(Out.size() - Stream.avail_out);
+	//Out.resize(Out.size() - Stream.avail_out);
 
 	while (true)
 	{
-		Out.resize(Out.size() + 1024);
+		if (Stream.avail_out == 0)
+			Out.resize(Out.size() + 1024);
 
 		Stream.next_out = Out.data() + Pos;
 		Stream.avail_out = 1024;
@@ -402,7 +403,7 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 
 		int CommandsRemoved = 0;
 
-		bool IsOldDojo = !strcmp(rssn.szMapName, "Dojo") && version == 9;
+		bool IsOldDojo = !strcmp(rssn.szMapName, "Dojo") && version != 9;
 		size_t BasicInfoCount = 0;
 
 		bool PrintNextCommand = false;
@@ -445,7 +446,7 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 						pos[2] -= 400;
 					};
 
-					short shortpos[3];
+					int16_t shortpos[3];
 
 					read(shortpos, FilePos + 2 + 1 + 4 + 4 + 2);
 
@@ -511,7 +512,7 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 
 		Print("Parsed %d commands\n", NumCommands);
 
-		if (IsOldDojo)
+		if (BasicInfoCount)
 			Print("Fixed %d BasicInfo commands\n", BasicInfoCount);
 
 		Print("Removed %d commands\n", CommandsRemoved);

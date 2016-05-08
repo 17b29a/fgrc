@@ -97,7 +97,7 @@ template<typename T, int _size>
 void read(T(&buf)[_size], int pos)
 {
 	for (int read = 0; read < _size; read++)
-		peekat(buf[read], g_iBytesRead + read * sizeof(T));
+		peekat(buf[read], pos + read * sizeof(T));
 }
 
 template<typename T>
@@ -117,14 +117,14 @@ void write(const T &buf, int pos)
 		throw EOFException(g_iBytesRead);
 #endif
 	
-	*(T *)(InflatedFile.data() + pos) = buf;
+	unaligned_copy(*(T*)&InflatedFile[pos], buf);
 }
 
 template<typename T, int _size>
 void write(const T(&buf)[_size], int pos)
 {
 	for (int read = 0; read < _size; read++)
-		write(buf[read], g_iBytesRead + read * sizeof(T));
+		write(buf[read], pos + read * sizeof(T));
 }
 
 template <typename T>
