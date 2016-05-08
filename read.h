@@ -17,6 +17,29 @@ private:
 	int Position;
 };
 
+template <typename T>
+void unaligned_copy(T& dest, const T& src)
+{
+#ifdef EMSCRIPTEN
+	for (int i = 0; i < sizeof(T); i++)
+		*(uint8_t*)(((uint8_t*)&dest) + i) = *(uint8_t*)(((uint8_t*)&src) + i);
+#else
+	dest = src;
+#endif
+}
+
+template <typename T>
+T unaligned_read(T& arg)
+{
+#ifdef EMSCRIPTEN
+	T temp;
+	unaligned_copy(temp, arg);
+	return temp;
+#else
+	return arg;
+#endif
+}
+
 //#define BOUNDS_CHECK
 
 template <typename T>
@@ -27,10 +50,13 @@ void peekat(T& buf, int pos)
 		throw EOFException(pos);
 #endif
 
-	if (sizeof(T) == 4 && (g_iBytesRead & 3) != 0)
+	void Print(const char*, ...);
+	if (pos + sizeof(buf) > InflatedFile.size())
+		Print("Exceeded bounds %d, %d\n", pos, sizeof(buf));
+
+	if (true)//(g_iBytesRead & 3) != 0))
 	{
-		// Unaligned read
-		memcpy(&buf, InflatedFile.data() + pos, sizeof(T));
+		unaligned_copy(buf, *(T*)&InflatedFile[pos]);
 	}
 	else
 	{
@@ -55,10 +81,7 @@ void read(T &buf)
 template<typename T>
 void read(T &buf, int pos)
 {
-	if (g_iBytesRead + sizeof(buf) > InflatedFile.size())
-		throw EOFException(g_iBytesRead);
-	
-	buf = *(T *)(InflatedFile.data() + pos);
+	peekat(buf, pos);
 }
 
 template<typename T, int _size>
@@ -66,7 +89,6 @@ void read(T(&buf)[_size])
 {
 	for (int read = 0; read < _size; read++)
 		peekat(buf[read], g_iBytesRead + read * sizeof(T));
-		//*(T *)((uint32_t)&buf + read * sizeof(T)) = *(T *)(InflatedFile.data() + g_iBytesRead + read * sizeof(T));
 
 	g_iBytesRead += sizeof(T) * _size;
 }
@@ -74,12 +96,8 @@ void read(T(&buf)[_size])
 template<typename T, int _size>
 void read(T(&buf)[_size], int pos)
 {
-	if (g_iBytesRead + sizeof(buf) > InflatedFile.size())
-		throw EOFException(g_iBytesRead);
-	
 	for (int read = 0; read < _size; read++)
 		peekat(buf[read], g_iBytesRead + read * sizeof(T));
-		//*(T *)((uint32_t)&buf + read * sizeof(T)) = *(T *)(InflatedFile.data() + pos + read * sizeof(T));
 }
 
 template<typename T>
@@ -94,8 +112,10 @@ T &ref()
 template<typename T>
 void write(const T &buf, int pos)
 {
+#ifdef BOUNDS_CHECK
 	if (g_iBytesRead + sizeof(buf) > InflatedFile.size())
 		throw EOFException(g_iBytesRead);
+#endif
 	
 	*(T *)(InflatedFile.data() + pos) = buf;
 }
@@ -103,11 +123,8 @@ void write(const T &buf, int pos)
 template<typename T, int _size>
 void write(const T(&buf)[_size], int pos)
 {
-	if (g_iBytesRead + sizeof(buf) > InflatedFile.size())
-		throw EOFException(g_iBytesRead);
-	
 	for (int read = 0; read < _size; read++)
-		*(T *)(InflatedFile.data() + pos + read * sizeof(T)) = *(T *)((uint32_t)&buf + read * sizeof(T));
+		write(buf[read], g_iBytesRead + read * sizeof(T));
 }
 
 template <typename T>
@@ -118,6 +135,7 @@ T& RefAt(int Pos)
 
 void nullexpand(int pos, int size)
 {
+	InflatedFile.resize(InflatedFile.size() + size);
 	memmove((void *)((uint32_t)InflatedFile.data() + pos + size), InflatedFile.data() + pos, g_iInflatedSize - pos);
 	memset(InflatedFile.data() + pos, 0, size);
 

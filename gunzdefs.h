@@ -1,15 +1,66 @@
 #include <cstdint>
 
 struct MUID{
-	unsigned long int	High;	///< High 4 Byte
-	unsigned long int	Low;	///< High 4 Byte
+	uint32_t	High;	///< High 4 Byte
+	uint32_t	Low;	///< High 4 Byte
 
-	MUID& operator =(const MUID& rhs)
-	{
-		High = rhs.High;
-		Low = rhs.Low;
+	/// 크기 비교를 위한 오퍼레이터 오버로딩
+	inline friend bool operator > (const MUID& a, const MUID& b){
+		if(a.High>b.High) return true;
+		if(a.High==b.High){
+			if(a.Low>b.Low) return true;
+		}
+		return false;
+	}
+	/// 크기 비교를 위한 오퍼레이터 오버로딩
+	inline friend bool operator >= (const MUID& a, const MUID& b){
+		if(a.High>b.High) return true;
+		if(a.High==b.High){
+			if(a.Low>=b.Low) return true;
+		}
+		return false;
+	}
+	/// 크기 비교를 위한 오퍼레이터 오버로딩
+	inline friend bool operator < (const MUID& a, const MUID& b){
+		if(a.High<b.High) return true;
+		if(a.High==b.High){
+			if(a.Low<b.Low) return true;
+		}
+		return false;
+	}
+	/// 크기 비교를 위한 오퍼레이터 오버로딩
+	inline friend bool operator <= (const MUID& a, const MUID& b){
+		if(a.High<b.High) return true;
+		if(a.High==b.High){
+			if(a.Low<=b.Low) return true;
+		}
+		return false;
+	}
 
+	/// 대입 오퍼레이터 오버로딩
+	inline MUID& operator=(int v){
+		High = 0;
+		Low = v;
 		return *this;
+	}
+	/// 대입 오퍼레이터 오버로딩
+	inline MUID& operator=(const MUID& a){
+		High = a.High;
+		Low = a.Low;
+		return *this;
+	}
+	/// 비교 오퍼레이터 오버로딩
+	inline friend bool operator==(const MUID& a, const MUID& b){
+		if(a.High==b.High){
+			if(a.Low==b.Low) return true;
+		}
+		return false;
+	}
+	/// 비교 오퍼레이터 오버로딩
+	inline friend bool operator!=(const MUID& a, const MUID& b){
+		if(a.Low!=b.Low) return true;
+		if(a.High!=b.High) return true;
+		return false;
 	}
 };
 
@@ -120,13 +171,8 @@ enum MMatchCharItemParts
 #pragma pack(push)
 #pragma pack(1)
 
-struct MTD_CharInfo
+struct MTD_CharInfo_V6
 {
-	// ＃이 구조체의 내용을 변경하려면 기존 리플레이의 로딩을 위해서 수정 전의 구조체를 ZReplay.cpp에 보존하고
-	// ＃버전별 로딩 코드를 작성해줘야 합니다. 변수의 추가는 가급적 마지막에 덧붙이는 편이 그나마 수월합니다.
-
-	// 캐릭터 정보
-	bool bHero;
 	char				szName[32];
 	char				szClanName[16];
 	MMatchClanGrade		nClanGrade;
@@ -150,7 +196,87 @@ struct MTD_CharInfo
 	unsigned short		nWR;
 
 	// 아이템 정보
-	unsigned long int	nEquipedItemDesc[MMCIP_END];
+	unsigned long int	nEquipedItemDesc[17];
+
+	// account 의 정보
+	MMatchUserGradeID	nUGradeID;
+
+	// ClanCLID
+	unsigned int		nClanCLID;
+
+	// 지난주 듀얼토너먼트 등급
+	int					nDTLastWeekGrade;
+
+	MUID				uidEquipedItem[17];
+	unsigned long int	nEquipedItemCount[17];
+};
+
+using MTD_CharInfo_FG_V7_0 = MTD_CharInfo_V6;
+
+struct MTD_CharInfo_FG_V7_1
+{
+	char				szName[32];
+	char				szClanName[16];
+	MMatchClanGrade		nClanGrade;
+	unsigned short		nClanContPoint;
+	char				nCharNum;
+	unsigned short		nLevel;
+	char				nSex;
+	char				nHair;
+	char				nFace;
+	unsigned long int	nXP;
+	int					nBP;
+	float				fBonusRate;
+	unsigned short		nPrize;
+	unsigned short		nHP;
+	unsigned short		nAP;
+	unsigned short		nMaxWeight;
+	unsigned short		nSafeFalls;
+	unsigned short		nFR;
+	unsigned short		nCR;
+	unsigned short		nER;
+	unsigned short		nWR;
+
+	unsigned long int	nEquipedItemDesc[22];
+
+	MMatchUserGradeID	nUGradeID;
+
+	unsigned int		nClanCLID;
+
+	int					nDTLastWeekGrade;
+
+	int64_t				uidEquipedItem[22];
+	unsigned long int	nEquipedItemCount[22];
+	unsigned long int	nEquipedItemRarity[22];
+	unsigned long int	nEquipedItemLevel[22];
+};
+
+struct MTD_CharInfo_FG_V9
+{
+	char				szName[32];
+	char				szClanName[16];
+	MMatchClanGrade		nClanGrade;
+	unsigned short		nClanContPoint;
+	char				nCharNum;
+	unsigned short		nLevel;
+	char				nSex;
+	char				nHair;
+	char				nFace;
+	unsigned long int	nXP;
+	int					nBP;
+	float				fBonusRate;
+	unsigned short		nPrize;
+	unsigned short		nHP;
+	unsigned short		nAP;
+	unsigned short		nMaxWeight;
+	unsigned short		nSafeFalls;
+	unsigned short		nFR;
+	unsigned short		nCR;
+	unsigned short		nER;
+	unsigned short		nWR;
+
+	// 아이템 정보
+	unsigned long int	nEquipedItemDesc[22];
 
 	// account 의 정보
 	MMatchUserGradeID	nUGradeID;
@@ -164,11 +290,13 @@ struct MTD_CharInfo
 	uint32_t unk[6];
 
 	// 아이템 정보 추가
-	MUID				uidEquipedItem[MMCIP_END];
-	unsigned long int	nEquipedItemCount[MMCIP_END];
-	unsigned long int	nEquipedItemRarity[MMCIP_END];
-	unsigned long int	nEquipedItemLevel[MMCIP_END];
-} *PMTDCHARINFO;
+	int64_t				uidEquipedItem[22];
+	unsigned long int	nEquipedItemCount[22];
+	unsigned long int	nEquipedItemRarity[22];
+	unsigned long int	nEquipedItemLevel[22];
+
+	char unk2[24];
+};
 
 enum MMatchSex
 {
@@ -192,6 +320,21 @@ struct ZCharacterProperty
 	int			nSafeFall;
 };
 
+struct ZCharacterStatus
+{
+	int			nLife;
+	int			nKills;
+	int			nDeaths;
+	int			nLoadingPercent;
+	int			nCombo;
+	int			nMaxCombo;
+	int			nAllKill;
+	int			nExcellent;
+	int			nFantastic;
+	int			nHeadShot;
+	int			nUnbelievable;
+	int			nExp;};
+
 struct MTD_DuelQueueInfo
 {
 	MUID			m_uidChampion;
@@ -202,4 +345,80 @@ struct MTD_DuelQueueInfo
 	bool			m_bIsRoundEnd;					// 라운드 끝날때인가
 };
 
+struct BulletInfo
+{
+	int Clip;
+	int Magazine;
+};
+
+enum MMatchTeam
+{
+	MMT_ALL			= 0,
+	MMT_SPECTATOR	= 1,
+	MMT_RED			= 2,
+	MMT_BLUE		= 3,
+	MMT_END
+};
+
+using v3 = float[3];
+
+template <size_t NumItems>
+struct ZCharacterReplayStateImpl
+{
+	MUID UID;
+	ZCharacterProperty Property;
+	float HP;
+	float AP;
+	ZCharacterStatus Status;
+
+	BulletInfo BulletInfos[NumItems];
+
+	v3 Position;
+	v3 Direction;
+
+	MMatchTeam Team;
+
+	bool Dead;
+
+	bool HidingAdmin;
+};
+
+using ZCharacterReplayState_FG_V7_0 = ZCharacterReplayStateImpl<17>;
+using ZCharacterReplayState_FG_V7_1 = ZCharacterReplayStateImpl<22>;
+using ZCharacterReplayState_FG_V9 =  ZCharacterReplayStateImpl<24>;
+
+template <typename CharInfo, typename ReplayState>
+struct ReplayPlayerInfo
+{
+	bool IsHero;
+	CharInfo Info;
+	ReplayState State;
+};
+
+using ReplayPlayerInfo_FG_V7_0 = ReplayPlayerInfo<MTD_CharInfo_FG_V7_0, ZCharacterReplayState_FG_V7_0>;
+using ReplayPlayerInfo_FG_V7_1 = ReplayPlayerInfo<MTD_CharInfo_FG_V7_1, ZCharacterReplayState_FG_V7_1>;
+using ReplayPlayerInfo_FG_V9 = ReplayPlayerInfo<MTD_CharInfo_FG_V9, ZCharacterReplayState_FG_V9>;
+
 #pragma pack(pop)
+
+namespace std
+{
+	template <>
+	class hash<MUID> : private hash<uint64_t>
+	{
+	public:
+		size_t operator()(const MUID &UID) const
+		{
+			uint64_t val = (uint64_t(UID.High) << 32) | UID.Low;
+			return hash<uint64_t>::operator()(val);
+		}
+	};
+}
+
+enum class MCommandID : uint16_t
+{
+	MC_PEER_BASICINFO = 0x271C,
+	MC_PEER_DIE = 0x2739,
+	Broken1 = 0x275F,
+	Broken2 = 0x276F,
+};

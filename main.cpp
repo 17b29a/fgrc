@@ -1,12 +1,16 @@
 #include <cstdarg>
 #include <vector>
+#include <unordered_map>
+#ifdef EMSCRIPTEN
+#include <emscripten/emscripten.h>
+#include <emscripten/bind.h>
+#endif
 #define ZLIB_CONST
 #include "zlib.h"
 #include "zfile.h"
 #include "gunzdefs.h"
 #include "read.h"
-#include <emscripten/bind.h>
-#include <emscripten/emscripten.h>
+#include "util.h"
 
 #pragma comment(lib, "zdll.lib")
 
@@ -19,61 +23,6 @@ int g_iInflatedSize;
 int add;
 
 bool g_bRename;
-
-void str_replace(char* str, const char* src, const char* dest)
-{
-	size_t srclen = strlen(src);
-	size_t destlen = strlen(dest);
-	size_t len = strlen(str);
-	char* end = str + len;
-	
-	char* p = str;
-	while ((p = strstr(p, src)))
-	{
-		int offset = destlen - srclen;
-		
-		if (offset > 0)
-		{
-			memmove(p + offset, p, end - p);
-			len += offset;
-		}
-		
-		for (int i = 0; i < destlen; i++)
-			p[i] = dest[i];
-		
-		p += destlen;
-		
-		if (offset < 0)
-		{
-			memmove(p, p - offset, end - (p - offset));
-			len -= offset;
-		}
-	}
-}
-
-void Print(const char* Format, ...)
-{
-	char buf[512] = "var element = document.getElementById('output'); \
-	element.innerHTML += '";
-	
-	static const auto len = strlen("var element = document.getElementById('output'); \
-	element.innerHTML += '");
-	
-	char* p = buf + len;
-	
-	va_list args;
-	va_start(args, Format);
-	vsprintf(p, Format, args);
-	va_end(args);
-	
-	str_replace(buf, "\n", "<br>");
-	
-	strcat(buf, "';");
-	
-	printf("%s\n", buf);
-	
-	emscripten_run_script(buf);
-}
 
 void Inflate(std::vector<unsigned char>& Out, const std::vector<unsigned char>& In)
 {
@@ -116,7 +65,9 @@ void Inflate(std::vector<unsigned char>& Out, const std::vector<unsigned char>& 
 		Pos += 1024;
 	} while(Stream.avail_out == 0 && Stream.avail_in > 0);
 
-	// Out.resize(Out.size() - Stream.avail_out);
+	Out.resize(Out.size() - Stream.avail_out);
+
+	inflateEnd(&Stream);
 	
 	// uLong crc = crc32(0L, Z_NULL, 0);
 	
@@ -155,7 +106,7 @@ void Deflate(std::vector<unsigned char>& Out, const std::vector<unsigned char>& 
 		Stream.next_out = Out.data() + Pos;
 		Stream.avail_out = 1024;
 	
-		err = deflate(&Stream, Z_SYNC_FLUSH);
+		err = deflate(&Stream, Z_NO_FLUSH);
 	
 		if (err != Z_OK)
 		{
@@ -168,6 +119,68 @@ void Deflate(std::vector<unsigned char>& Out, const std::vector<unsigned char>& 
 	} while(Stream.avail_out == 0 && Stream.avail_in > 0);
 
 	Out.resize(Out.size() - Stream.avail_out);
+
+	while (true)
+	{
+		Out.resize(Out.size() + 1024);
+
+		Stream.next_out = Out.data() + Pos;
+		Stream.avail_out = 1024;
+
+		err = deflate(&Stream, Z_FINISH);
+	
+		if (err != Z_OK)
+		{
+			if (err == Z_STREAM_END)
+				break;
+
+			Print("Error: %d: %s\n", err, Stream.msg);
+			Print("%d, %d\n", Stream.avail_out, Stream.avail_in);
+			break;
+		}
+
+		Pos += 1024 - Stream.avail_out;
+	}
+
+	deflateEnd(&Stream);
+
+	Print("%d, %d\n", Stream.avail_out, Stream.avail_in);
+
+	Out.resize(Out.size() - Stream.avail_out);
+}
+
+template <typename T>
+void PrintCharacterInfo(const T& rpi)
+{
+	auto& ci = rpi.Info;
+	Print("UID: %08X%08X\n", rpi.State.UID.High, rpi.State.UID.Low);
+	Print("Name: %s\n", ci.szName);
+	if (ci.szClanName[0])
+		Print("Clan name: %s\n", ci.szClanName);
+
+#ifdef DEBUG
+	Print("Sex: %d\n", ci.nSex);
+	Print("Hair: %d\n", ci.nHair);
+	Print("Face: %d\n", ci.nFace);
+	Print("Level: %d\n", ci.nLevel);
+
+	for (int j = 0; j < ArraySize(ci.nEquipedItemDesc); j++)
+	{
+		if (!ci.nEquipedItemDesc[j])
+			continue;
+
+		Print("Equipped item ID %d: %d\n", j, ci.nEquipedItemDesc[j]);
+		uint64_t UID = (uint64_t(ci.uidEquipedItem[j].High) << 32) | ci.uidEquipedItem[j].Low;
+		Print("Equipped item UID %d: %I64d\n", j, UID);
+		Print("Equipped item count %d: %d\n", j, ci.nEquipedItemCount[j]);
+		Print("Equipped item rarity %d: %d\n", j, ci.nEquipedItemRarity[j]);
+		Print("Equipped item level %d: %d\n", j, ci.nEquipedItemLevel[j]);
+	}
+
+	Print("Read count: %d\n", g_iBytesRead);
+#endif
+
+	Print("\n");
 }
 
 std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
@@ -176,13 +189,13 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 	
 	Inflate(InflatedFile, File);
 	
-	Print("Inflated %d -> %d\n", File.size(), InflatedFile.size());
+	Print("Inflated %d -> %d\n\n", File.size(), InflatedFile.size());
 	
 	g_iInflatedSize = InflatedFile.size();
 	g_iBytesRead = 0;
 	add = 0;
 
-#ifdef DEBUG
+#if defined DEBUG && !defined EMSCRIPTEN
 	if (!bDirectory)
 	{
 		FILE *file;
@@ -196,6 +209,12 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 
 	read(header);
 	read(version);
+
+	if (version != 9 && version != 7)
+	{
+		Print("Unsupported version %d\n", version);
+		return std::vector<unsigned char>();
+	}
 
 	write<uint32_t>(9, 4); // Write version 9
 
@@ -240,75 +259,42 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 
 	int CharStart = g_iBytesRead;
 
-	if (version == 9)
+	struct PlayerInfo
 	{
-		for (int i = 0; i < CharCount; i++)
+		std::string Name;
+		uint32_t Kills;
+		uint32_t Deaths;
+
+		PlayerInfo(const std::string& a, uint32_t b, uint32_t c) : Name(a), Kills(b), Deaths(c)
 		{
-			Print("Read count: %d\n", g_iBytesRead);
-			MTD_CharInfo ci;
-			peek(ci);
-			Print("Character %d\n", i + 1);
-			Print("Name: %s\n", ci.szName);
-			Print("Clan name: %s\n", ci.szClanName);
-			Print("Sex: %d\n", ci.nSex);
-			Print("Hair: %d\n", ci.nHair);
-			Print("Face: %d\n", ci.nFace);
-			Print("Level: %d\n", ci.nLevel);
+		}
+	};
+	std::unordered_map<MUID, PlayerInfo> PlayerMap;
 
-			for (int j = 0; j < MMCIP_END; j++)
-			{
-				if (!ci.nEquipedItemDesc[j])
-					continue;
+	for (int i = 0; i < CharCount; i++)
+	{
+		if (version == 9)
+		{
+			ReplayPlayerInfo_FG_V9 rpi;
+			peek(rpi);
+			MTD_CharInfo_FG_V9& ci = rpi.Info;
+			PrintCharacterInfo(rpi);
 
-				Print("Equipped item ID %d: %d\n", j, ci.nEquipedItemDesc[j]);
-#ifdef DEBUG
-				uint64_t UID = (uint64_t(ci.uidEquipedItem[j].High) << 32) | ci.uidEquipedItem[j].Low;
-				Print("Equipped item UID %d: %I64d\n", j, UID);
-				Print("Equipped item count %d: %d\n", j, ci.nEquipedItemCount[j]);
-				Print("Equipped item rarity %d: %d\n", j, ci.nEquipedItemRarity[j]);
-				Print("Equipped item level %d: %d\n", j, ci.nEquipedItemLevel[j]);
-#endif
-			}
-
-			Print("Read count: %d\n", g_iBytesRead);
-			Print("\n");
+			PlayerMap.emplace(unaligned_read(rpi.State.UID), PlayerInfo(ci.szName, 0, 0));
 
 			g_iBytesRead += 1053;
 		}
-
-		Print("Already V9!\n");
-
-		if (!g_bRename)
-		{
-			//return true;
-		}
-	}
-	else if (version == 7 && !bInterimV7)
-	{
-		for (int i = 0; i < CharCount; i++)
+		else if (version == 7 && !bInterimV7)
 		{
 			const int blocksize = 511 + 182;
 
 			int mtdcharinfo = 376;
 
-			Print("Read count: %d\n", g_iBytesRead);
-			MTD_CharInfo ci;
-			peek(ci);
-			Print("Character %d\n", i + 1);
-			Print("Name: %s\n", ci.szName);
-			Print("Clan name: %s\n", ci.szClanName);
-			Print("Sex: %d\n", ci.nSex);
-			Print("Hair: %d\n", ci.nHair);
-			Print("Face: %d\n", ci.nFace);
-			Print("Level: %d\n", ci.nLevel);
-
-			for (int j = 0; j < 17; j++)
-			{
-				Print("Equipped item ID %d: %d\n", j, ci.nEquipedItemDesc[j]);
-			}
-
-			Print("Read count: %d\n", g_iBytesRead);
-			Print("\n");
+			dbgprint("Read count: %d\n", g_iBytesRead);
+			ReplayPlayerInfo_FG_V7_0 rpi;
+			peek(rpi);
+			MTD_CharInfo_FG_V7_0& ci = rpi.Info;
+			PrintCharacterInfo(rpi);
 
 			g_iBytesRead += blocksize;
 
@@ -324,58 +310,45 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 			Print("\n");
 
 			int pos = CharStart + i * blocksize + 306 + add;
-			Print("Pos1: %d\n", pos);
+			dbgprint("Pos1: %d\n", pos);
 			int size = 84;
 			nullexpand(pos, size);
 			add += size;
 
 			pos = CharStart + i * blocksize + mtdcharinfo + add;
-			Print("Pos2: %d\n", pos);
+			dbgprint("Pos2: %d\n", pos);
 			size = 220;
 			nullexpand(pos, size);
 			add += size;
 
 			pos = CharStart + i * blocksize + mtdcharinfo + 279 + add;
-			Print("Pos3: %d\n", pos);
+			dbgprint("Pos3: %d\n", pos);
 			size = 56;
 			nullexpand(pos, size);
 			add += size;
 
+			PlayerMap.emplace(unaligned_read(rpi.State.UID), PlayerInfo(ci.szName, 0, 0));
+
 			Print("\n");
 		}
-	}
-	else if (version == 7 && bInterimV7)
-	{
-		for (int i = 0; i < CharCount; i++)
+		else if (version == 7 && bInterimV7)
 		{
 			const int blocksize = 989;
 
 			int mtdcharinfo = 631;
 
-			Print("Read count: %d\n", g_iBytesRead);
-			MTD_CharInfo ci;
-			peek(ci);
-			Print("Character %d\n", i + 1);
-			Print("Name: %s\n", ci.szName);
-			Print("Clan name: %s\n", ci.szClanName);
-			Print("Sex: %d\n", ci.nSex);
-			Print("Hair: %d\n", ci.nHair);
-			Print("Face: %d\n", ci.nFace);
-			Print("Level: %d\n", ci.nLevel);
-
-			for (int j = 0; j < 17; j++)
-			{
-				Print("Equipped item ID %d: %d\n", j, ci.nEquipedItemDesc[j]);
-			}
-
-			Print("Read count: %d\n", g_iBytesRead);
-			Print("\n");
+			dbgprint("Read count: %d\n", g_iBytesRead);
+			ReplayPlayerInfo_FG_V7_1 rpi;
+			peek(rpi);
+			MTD_CharInfo_FG_V7_1& ci = rpi.Info;
+			PrintCharacterInfo(rpi);
 
 			g_iBytesRead += blocksize;
 
 			ZCharacterProperty &zcp = *(ZCharacterProperty *)(InflatedFile.data() + CharStart + blocksize * i + mtdcharinfo + 8 + add);
 
 			Print("ZCharacterProperty: %d\n", (uint32_t)&zcp - (uint32_t)InflatedFile.data());
+			Print("UID: %08X%08X\n", rpi.State.UID.High, rpi.State.UID.Low);
 			Print("Name: %s\n", zcp.szName);
 			Print("Clan name: %s\n", zcp.szClanName);
 			Print("Sex: %d\n", zcp.nSex);
@@ -409,181 +382,157 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 			nullexpand(pos, size);
 			add += size;
 
+			PlayerMap.emplace(unaligned_read(rpi.State.UID), PlayerInfo(ci.szName, 0, 0));
+
 			Print("\n");
 		}
 	}
-	else
-	{
-		Print("Unsupported version %d\n", version);
-		return InflatedFile;
-	}
 
-	Print("Read count: %d\n", g_iBytesRead);
+	dbgprint("Read count: %d\n", g_iBytesRead);
 
 	int CommandStream = g_iBytesRead;
 
-	if (!strcmp(rssn.szMapName, "Dojo") && version != 9)
+	auto FilePos = static_cast<size_t>(CommandStream);
+	[&]()
 	{
-		auto Transform = [](float pos[3])
-		{
-			pos[0] += 600;
-			pos[1] -= 2800;
-			pos[2] -= 400;
-		};
+#define Read(type) [&]() -> type { type ret; read(ret, FilePos); FilePos += sizeof(type); return ret; }()
+#define ReadAt(type, pos) [&]() -> type { type ret; read(ret, pos); return ret; }()
 
-		auto block = [&]()
-		{
-			int Count = 0;
+		auto StartTime = Read(float);
 
-			for (int i = CommandStream; i < g_iInflatedSize; i++)
+		int NumCommands = 0;
+
+		int CommandsRemoved = 0;
+
+		bool IsOldDojo = !strcmp(rssn.szMapName, "Dojo") && version == 9;
+		size_t BasicInfoCount = 0;
+
+		bool PrintNextCommand = false;
+
+		while (FilePos < InflatedFile.size())
+		{
+			auto Time = Read(float);
+			auto SenderUID = Read(MUID);
+			auto Size = Read(uint32_t);
+			auto CommandSize = ReadAt(uint16_t, FilePos);
+			auto CommandID = ReadAt(MCommandID, FilePos + 2);
+			if (Size == 0)
+				Print("Zero size: %04X, %d\n", uint16_t(CommandID), CommandSize);
+
+			//Print("i: %d, CommandID: %04X, size: %d\n", FilePos, uint16_t(CommandID), Size);
+
+			bool DeletedCommand = false;
+
+			auto DeleteCommand = [&]()
 			{
-				if (InflatedFile[i] != 0x1C)
-					continue;
+				InflatedFile.erase(InflatedFile.begin() + FilePos - 0x10, InflatedFile.begin() + FilePos + Size);
+				g_iInflatedSize = InflatedFile.size();
 
-				if (InflatedFile[i + 1] != 0x27)
-					continue;
+				DeletedCommand = true;
 
-				if (InflatedFile[i + 2] != 0)
-					continue;
+				Print("Removing command at %d\n", FilePos);
+			};
 
-				if (*(uint32_t *)(InflatedFile.data() + i + 3) != 0x19)
-					continue;
-
-				short shortpos[3];
-
-				read(shortpos, i + 2 + 1 + 4 + 4);
-
-				float pos[3] = { static_cast<float>(shortpos[0]), static_cast<float>(shortpos[1]), static_cast<float>(shortpos[2]) };
-
-				if (pos[2] < 0)
+			[&]
+			{
+				switch (CommandID)
 				{
-					Print("Replay is on new dojo map; not translating positions\n");
-					return;
-				}
-
-				//Print("Original position: %f, %f, %f\n", pos[0], pos[1], pos[2]);
-
-				Transform(pos);
-
-				for (int j = 0; j < 3; j++)
-					shortpos[j] = short(pos[j]);
-
-				write(shortpos, i + 2 + 1 + 4 + 4);
-
-				Count++;
-
-				i += 25;
-			}
-
-			Print("Converted %d basicinfo commands\n", Count);
-
-			Count = 0;
-
-			for (int i = CommandStream; i < g_iInflatedSize; i++)
-			{
-				if (InflatedFile[i] != 0x35)
-					continue;
-
-				if (InflatedFile[i + 1] != 0x27)
-					continue;
-
-				if (InflatedFile[i + 2] != 0)
-					continue;
-
-				float pos[3];
-
-				read(pos, i + 7);
-
-				Transform(pos);
-
-				write(pos, i + 7);
-
-				Count++;
-
-				i += 23;
-			}
-
-			Print("Converted %d slash commands\n", Count);
-		};
-
-		block();
-	}
-
-	int kills[2] = { 0, 0 };
-	if (CharCount == 2)
-	{
-		MUID uid[2];
-		uid[0] = *(MUID *)(InflatedFile.data() + CharStart + 679);
-		uid[1] = *(MUID *)(InflatedFile.data() + CharStart + 1053 + 679);
-		for (int i = CommandStream; i < g_iInflatedSize; i++)
-		{
-			if (*(uint32_t *)(InflatedFile.data() + i) != 0x0000000D)
-				continue;
-
-			if (*(uint32_t *)(InflatedFile.data() + i + 4) != 0x2739000D)
-				continue;
-
-			MUID sender = *(MUID *)(InflatedFile.data() + i - 8);
-
-			for (int j = 0; j < 2; j++)
-			{
-				if (sender.High == uid[j].High && sender.Low == uid[j].Low)
+				case MCommandID::MC_PEER_BASICINFO:
 				{
-					kills[!j]++;
+					if (!IsOldDojo)
+						return;
+
+					auto Transform = [](float pos[3])
+					{
+						pos[0] += 600;
+						pos[1] -= 2800;
+						pos[2] -= 400;
+					};
+
+					short shortpos[3];
+
+					read(shortpos, FilePos + 2 + 1 + 4 + 4 + 2);
+
+					float pos[3] = { static_cast<float>(shortpos[0]), static_cast<float>(shortpos[1]), static_cast<float>(shortpos[2]) };
+
+					if (pos[2] < 0)
+					{
+						Print("Replay is on new dojo map; not translating positions\n");
+						IsOldDojo = false;
+						return;
+					}
+
+					Transform(pos);
+
+					for (int j = 0; j < 3; j++)
+						shortpos[j] = short(pos[j]);
+
+					write(shortpos, FilePos + 2 + 1 + 4 + 4 + 2);
+
+					BasicInfoCount++;
 				}
-			}
+				break;
+
+				case MCommandID::MC_PEER_DIE:
+				{
+					auto VictimIt = PlayerMap.find(SenderUID);
+					if (VictimIt == PlayerMap.end())
+					{
+						Print("Couldnt find victim %08X%08X\n", SenderUID.High, SenderUID.Low);
+						return;
+					}
+
+					MUID AttackerUID = ReadAt(MUID, FilePos + 5);
+					auto AttackerIt = PlayerMap.find(AttackerUID);
+					if (AttackerIt == PlayerMap.end())
+					{
+						Print("Couldnt find attacker %08X%08X\n", AttackerUID.High, AttackerUID.Low);
+						return;
+					}
+
+					AttackerIt->second.Kills++;
+					VictimIt->second.Deaths++;
+				}
+				break;
+
+				case MCommandID::Broken1:
+				case MCommandID::Broken2:
+				{
+					DeleteCommand();
+					CommandsRemoved++;
+				}
+				break;
+				};
+			}();
+
+			if (!DeletedCommand)
+				FilePos += Size;
+			else
+				FilePos -= 0x10;
+
+			NumCommands++;
 		}
 
-		Print("Score: %d-%d\n", kills[0], kills[1]);
-	}
+		Print("Parsed %d commands\n", NumCommands);
 
-	int nCommandsRemoved = 0;
+		if (IsOldDojo)
+			Print("Fixed %d BasicInfo commands\n", BasicInfoCount);
 
-	for (int i = CommandStream; i < g_iInflatedSize; i++)
+		Print("Removed %d commands\n", CommandsRemoved);
+#undef Read
+#undef ReadAt
+	}();
+
+	Print("\n");
+
+	for (auto& Item : PlayerMap)
 	{
-		if (*(uint32_t *)(InflatedFile.data() + i) != 0x00000011)
-			continue;
+		auto& Player = Item.second;
 
-		if (*(uint32_t *)(InflatedFile.data() + i + 4) != 0x275F0011)
-			continue;
-
-		int offset = i - 12;
-
-		int size = g_iInflatedSize - offset;
-
-		memcpy(InflatedFile.data() + offset, InflatedFile.data() + offset + 0x21, size);
-
-		g_iInflatedSize -= 0x21;
-
-		nCommandsRemoved++;
-
-		i -= 13;
+		Print("%s - %d/%d\n", Player.Name.c_str(), Player.Kills, Player.Deaths);
 	}
 
-	for (int i = CommandStream; i < g_iInflatedSize; i++)
-	{
-		if (*(uint32_t *)(InflatedFile.data() + i) != 0x00000021)
-			continue;
-
-		if (*(uint32_t *)(InflatedFile.data() + i + 4) != 0x276F0021)
-			continue;
-
-		int offset = i - 12;
-
-		int size = g_iInflatedSize - offset;
-
-		memcpy(InflatedFile.data() + offset, InflatedFile.data() + offset + 0x31, size);
-
-		g_iInflatedSize -= 0x31;
-
-		nCommandsRemoved++;
-
-		i -= 13;
-	}
-
-	Print("Removed %d commands\n", nCommandsRemoved);
-
-#ifdef DEBUG
+#if defined DEBUG && !defined EMSCRIPTEN
 	if (!bDirectory)
 	{
 		FILE *file;
@@ -672,6 +621,8 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 	Deflate(DeflatedFile, InflatedFile);
 	
 	Print("Deflated %d -> %d\n", InflatedFile.size(), DeflatedFile.size());
+
+	//EndPrint();
 	
 	return DeflatedFile;
 }
