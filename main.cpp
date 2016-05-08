@@ -24,6 +24,8 @@ void str_replace(char* str, const char* src, const char* dest)
 {
 	size_t srclen = strlen(src);
 	size_t destlen = strlen(dest);
+	size_t len = strlen(str);
+	char* end = str + len;
 	
 	char* p = str;
 	while ((p = strstr(p, src)))
@@ -31,15 +33,21 @@ void str_replace(char* str, const char* src, const char* dest)
 		int offset = destlen - srclen;
 		
 		if (offset > 0)
-			memmove(p + offset, p, offset);
+		{
+			memmove(p + offset, p, end - p);
+			len += offset;
+		}
 		
 		for (int i = 0; i < destlen; i++)
 			p[i] = dest[i];
 		
-		p += srclen;
+		p += destlen;
 		
 		if (offset < 0)
-			memmove(p, p - offset, -offset);
+		{
+			memmove(p, p - offset, end - (p - offset));
+			len -= offset;
+		}
 	}
 }
 
@@ -48,8 +56,10 @@ void Print(const char* Format, ...)
 	char buf[512] = "var element = document.getElementById('output'); \
 	element.innerHTML += '";
 	
-	char* p = buf + strlen("var element = document.getElementById('output'); \
+	static const auto len = strlen("var element = document.getElementById('output'); \
 	element.innerHTML += '");
+	
+	char* p = buf + len;
 	
 	va_list args;
 	va_start(args, Format);
@@ -106,7 +116,13 @@ void Inflate(std::vector<unsigned char>& Out, const std::vector<unsigned char>& 
 		Pos += 1024;
 	} while(Stream.avail_out == 0 && Stream.avail_in > 0);
 
-	Out.resize(Out.size() - Stream.avail_out);
+	// Out.resize(Out.size() - Stream.avail_out);
+	
+	// uLong crc = crc32(0L, Z_NULL, 0);
+	
+	// crc = crc32(crc, Out.data(), Out.size());
+	
+	// Print("CRC32: %08X\n", crc);
 }
 
 void Deflate(std::vector<unsigned char>& Out, const std::vector<unsigned char>& In)
@@ -157,8 +173,11 @@ void Deflate(std::vector<unsigned char>& Out, const std::vector<unsigned char>& 
 std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 {
 	InflatedFile.resize(0);
+	
 	Inflate(InflatedFile, File);
-	Print("Inflated size: %d\n", InflatedFile.size());
+	
+	Print("Inflated %d -> %d\n", File.size(), InflatedFile.size());
+	
 	g_iInflatedSize = InflatedFile.size();
 	g_iBytesRead = 0;
 	add = 0;
@@ -200,6 +219,20 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 
 	Print("Map name: %s\nStage name: %s\n", rssn.szMapName, rssn.szStageName);
 
+	// Print("Read count: %d\n", g_iBytesRead);
+	// for (int i = 0; i < 1000; i++)
+	// {
+		// Print("%02X ", InflatedFile[i]);
+		// if (i % 64 == 0)
+			// Print("\n");
+	// }
+	
+	// for (int i = 0; i < 10; i++)
+	// {
+		// Print("%08X\n", *(uint32_t *)(InflatedFile.data() + g_iBytesRead + i));
+		// Print("%d\n", g_iBytesRead + i);
+	// }
+	
 	int32_t CharCount = 0;
 	read(CharCount);
 
@@ -228,11 +261,13 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 					continue;
 
 				Print("Equipped item ID %d: %d\n", j, ci.nEquipedItemDesc[j]);
+#ifdef DEBUG
 				uint64_t UID = (uint64_t(ci.uidEquipedItem[j].High) << 32) | ci.uidEquipedItem[j].Low;
 				Print("Equipped item UID %d: %I64d\n", j, UID);
 				Print("Equipped item count %d: %d\n", j, ci.nEquipedItemCount[j]);
 				Print("Equipped item rarity %d: %d\n", j, ci.nEquipedItemRarity[j]);
 				Print("Equipped item level %d: %d\n", j, ci.nEquipedItemLevel[j]);
+#endif
 			}
 
 			Print("Read count: %d\n", g_iBytesRead);
@@ -636,7 +671,7 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 	
 	Deflate(DeflatedFile, InflatedFile);
 	
-	Print("Size: %d -> %d\n", InflatedFile.size(), DeflatedFile.size());
+	Print("Deflated %d -> %d\n", InflatedFile.size(), DeflatedFile.size());
 	
 	return DeflatedFile;
 }

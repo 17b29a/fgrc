@@ -17,13 +17,37 @@ private:
 	int Position;
 };
 
+//#define BOUNDS_CHECK
+
+template <typename T>
+void peekat(T& buf, int pos)
+{
+#ifdef BOUNDS_CHECK
+	if (pos + sizeof(buf) > InflatedFile.size())
+		throw EOFException(pos);
+#endif
+
+	if (sizeof(T) == 4 && (g_iBytesRead & 3) != 0)
+	{
+		// Unaligned read
+		memcpy(&buf, InflatedFile.data() + pos, sizeof(T));
+	}
+	else
+	{
+		buf = *(T *)(InflatedFile.data() + pos);
+	}
+}
+
+template<typename T>
+void peek(T &buf)
+{
+	peekat(buf, g_iBytesRead);
+}
+
 template<typename T>
 void read(T &buf)
 {
-	if (g_iBytesRead + sizeof(buf) > InflatedFile.size())
-		throw EOFException(g_iBytesRead);
-	
-	buf = *(T *)(InflatedFile.data() + g_iBytesRead);
+	peek(buf);
 
 	g_iBytesRead += sizeof(T);
 }
@@ -40,13 +64,11 @@ void read(T &buf, int pos)
 template<typename T, int _size>
 void read(T(&buf)[_size])
 {
-	if (g_iBytesRead + sizeof(buf) > InflatedFile.size())
-		throw EOFException(g_iBytesRead);
-	
 	for (int read = 0; read < _size; read++)
-		*(T *)((uint32_t)&buf + read * sizeof(T)) = *(T *)(InflatedFile.data() + g_iBytesRead + read * sizeof(T));
+		peekat(buf[read], g_iBytesRead + read * sizeof(T));
+		//*(T *)((uint32_t)&buf + read * sizeof(T)) = *(T *)(InflatedFile.data() + g_iBytesRead + read * sizeof(T));
 
-	g_iBytesRead += sizeof(T)* _size;
+	g_iBytesRead += sizeof(T) * _size;
 }
 
 template<typename T, int _size>
@@ -56,7 +78,8 @@ void read(T(&buf)[_size], int pos)
 		throw EOFException(g_iBytesRead);
 	
 	for (int read = 0; read < _size; read++)
-		*(T *)((uint32_t)&buf + read * sizeof(T)) = *(T *)(InflatedFile.data() + pos + read * sizeof(T));
+		peekat(buf[read], g_iBytesRead + read * sizeof(T));
+		//*(T *)((uint32_t)&buf + read * sizeof(T)) = *(T *)(InflatedFile.data() + pos + read * sizeof(T));
 }
 
 template<typename T>
@@ -66,15 +89,6 @@ T &ref()
 		throw EOFException(g_iBytesRead);
 	
 	return *(T *)(InflatedFile.data() + g_iBytesRead);
-}
-
-template<typename T>
-void peek(T &buf)
-{
-	if (g_iBytesRead + sizeof(buf) > InflatedFile.size())
-		throw EOFException(g_iBytesRead);
-	
-	buf = *(T *)(InflatedFile.data() + g_iBytesRead);
 }
 
 template<typename T>

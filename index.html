@@ -1,59 +1,79 @@
 <!doctype html>
 <html>
 	<input type="file" id="file-input" />
-	<h3>Contents of the file:</h3>
+	<br>
+	<br>
 	<a id='a' download='Fixfix.gzr' type='application/octet-stream'>Download result</a>
 	<pre id="output"></pre>
 
   <script src="fgrc.js"></script>
   
-  <script>
-	function readSingleFile(e) {
-	  var file = e.target.files[0];
-	  if (!file) {
-		return;
-	  }
-	  var reader = new FileReader();
-	  reader.onload = function(e) {
-		var contents = e.target.result;
-		//displayContents(contents);
-		console.log(typeof e.target.result);
-		var vector = new Module.FileVector;
-		var arr = new Uint8Array(contents);
-		console.log('Length: ' + arr.length);
-		for (i = 0; i < arr.length; i++)
-		{
-			vector.push_back(arr[i]);
-		}
-		console.log('Length: ' + arr.length + ', ' + vector.size());
+<script>
 
-		var ret = Module.RepairFile(vector);
-		
-		var arr = new Uint8Array(ret.size());
-		console.log('Uint8Array length: ' + arr.length);
-		for (i = 0; i < arr.length; i++)
-		{
-			arr[i] = ret.get(i);
-		}
-		
-		var blob = new Blob([arr], {type: 'application/octet-binary'});
-		var a = document.getElementById('a');
-		a.href = URL.createObjectURL(blob);
-		
-		//blob = null;
-		arr = null;
-		vector = null;
-	  };
-	  reader.readAsArrayBuffer(file);
+	function insertBeforeLastOccurrence(strToSearch, strToFind, strToInsert) {
+		var n = strToSearch.lastIndexOf(strToFind);
+		if (n < 0) return strToSearch;
+		return strToSearch.substring(0,n) + strToInsert + strToSearch.substring(n);
 	}
+	
+	function readSingleFile(e) {
+		var file = e.target.files[0];
 
-	function displayContents(contents) {
-	  var element = document.getElementById('file-content');
-	  element.innerHTML = contents;
+		if (!file) {
+			return;
+		}
+		
+		var a = document.getElementById('a');
+		a.download = insertBeforeLastOccurrence(file.name, ".gzr", "_repaired");
+
+		var reader = new FileReader();
+		
+		reader.onloadstart = function(e) {
+			var output = document.getElementById('output');
+			output.innerHTML = 'Loading...<br>';
+		};
+		
+		function loadFile(e) {
+			var contents = e.target.result;
+
+			var vector = new Module.FileVector;
+			var arr = new Uint8Array(contents);
+
+			console.log('Length: ' + arr.length);
+
+			for (i = 0; i < arr.length; i++)
+			{
+				vector.push_back(arr[i]);
+			}
+			console.log('Length: ' + arr.length + ', ' + vector.size());
+
+			var ret = Module.RepairFile(vector);
+
+			var arr = new Uint8Array(ret.size());
+			console.log('Uint8Array length: ' + arr.length);
+			for (i = 0; i < arr.length; i++)
+			{
+				arr[i] = ret.get(i);
+			}
+
+			var blob = new Blob([arr], {type: 'application/octet-binary'});
+			var a = document.getElementById('a');
+			a.href = URL.createObjectURL(blob);
+
+			//blob = null;
+			arr = null;
+			vector = null;
+		};
+		
+		reader.onload = function (e) {
+			setTimeout(loadFile, 0, e);
+		}
+		
+		reader.readAsArrayBuffer(file);
 	}
 
 	document.getElementById('file-input')
 	  .addEventListener('change', readSingleFile, false);
-
-  </script>
+	  
+</script>
 </html>
