@@ -123,18 +123,19 @@ void Deflate(std::vector<unsigned char>& Out, const std::vector<unsigned char>& 
 	while (true)
 	{
 		if (Stream.avail_out == 0)
+		{
 			Out.resize(Out.size() + 1024);
+			Stream.avail_out = 1024;
+		}
 
 		Stream.next_out = Out.data() + Pos;
-		Stream.avail_out = 1024;
 
 		err = deflate(&Stream, Z_FINISH);
-	
+		if (err == Z_STREAM_END)
+			break;
+
 		if (err != Z_OK)
 		{
-			if (err == Z_STREAM_END)
-				break;
-
 			Print("Error: %d: %s\n", err, Stream.msg);
 			Print("%d, %d\n", Stream.avail_out, Stream.avail_in);
 			break;
