@@ -85,13 +85,11 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 	read(header);
 	read(version);
 
-	if (version != 9 && version != 7)
+	if (version < 7 || version > 9)
 	{
 		Print("Unsupported version %d\n", version);
 		return std::vector<unsigned char>();
 	}
-
-	write<uint32_t>(9, 4); // Write version 9
 
 	REPLAY_STAGE_SETTING_NODE rssn;
 
@@ -108,6 +106,9 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 	if (rssn.nGameType == MMATCH_GAMETYPE_DUEL)
 		offset += sizeof(MTD_DuelQueueInfo);
 	bool bInterimV7 = version == 7 && (InflatedFile[offset] == 0x00 || InflatedFile[offset] == 0x01);
+
+	if (version == 7)
+		write<uint32_t>(9, 4); // Write version 9
 
 	Print("Header: %08X\nVersion: V%d.0%s\n", header, version, bInterimV7 ? " (interim)" : "");
 
@@ -158,6 +159,17 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 			PlayerMap.emplace(unaligned_read(rpi.State.UID), PlayerInfo(ci.szName, 0, 0));
 
 			g_iBytesRead += 1053;
+		}
+		else if (version == 8)
+		{
+			ReplayPlayerInfo_FG_V8 rpi;
+			peek(rpi);
+			MTD_CharInfo_FG_V8& ci = rpi.Info;
+			PrintCharacterInfo(rpi);
+
+			PlayerMap.emplace(unaligned_read(rpi.State.UID), PlayerInfo(ci.szName, 0, 0));
+
+			g_iBytesRead += 1021;
 		}
 		else if (version == 7 && !bInterimV7)
 		{
