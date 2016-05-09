@@ -446,6 +446,44 @@ using ReplayPlayerInfo_FG_V7_1 = ReplayPlayerInfo<MTD_CharInfo_FG_V7_1, ZCharact
 using ReplayPlayerInfo_FG_V8 = ReplayPlayerInfo<MTD_CharInfo_FG_V8, ZCharacterReplayState_FG_V8>;
 using ReplayPlayerInfo_FG_V9 = ReplayPlayerInfo<MTD_CharInfo_FG_V9, ZCharacterReplayState_FG_V9>;
 
+struct MTD_CTFReplayInfo
+{
+	MUID uidCarrierRed;
+	MUID uidCarrierBlue;
+	float posFlagRed[3];
+	float posFlagBlue[3];
+	int nFlagStateRed;
+	int nFlagStateBlue;
+};
+
+struct MTD_GunGameWeaponInfo
+{
+	MUID uidPlayer;
+	int nWeaponLevel;
+	int nWeaponID[3]; // melee, primary, secondary
+};
+
+// This isn't packed in Gunz, but I'm assuming there's no padding
+struct DTPlayerInfo
+{
+	char m_szCharName[32];
+	MUID uidPlayer;
+	int m_nTP;
+};
+
+struct MTD_DuelTournamentGameInfo
+{
+	MUID			uidPlayer1;					// 진행할 게임의 참가할 Player1
+	MUID			uidPlayer2;					// 진행할 게임의 참가할 Player1
+	int				nMatchType;					// 진행할 게임의 MatchType(
+	int				nMatchNumber;				// 진행할 게임의 MatchNumber
+	int				nRoundCount;				// 진행할 게임의 라운드수
+	bool			bIsRoundEnd;				// 라운드가 종료되었는가에 대한 Flag(플레이어 이탈자 때문에..)
+	char			nWaitPlayerListLength;		// 대기자 리스트의 Length
+	uint8_t			dummy[2];					// 4바이트씩 맞추기 위한 더미
+	MUID			WaitPlayerList[8];			// 대기자들의 MUID
+};
+
 #pragma pack(pop)
 
 namespace std

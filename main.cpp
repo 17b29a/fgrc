@@ -97,8 +97,41 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 
 	if (rssn.nGameType == MMATCH_GAMETYPE_DUEL)
 	{
-		MTD_DuelQueueInfo dqi;
-		read(dqi);
+		g_iBytesRead += sizeof(MTD_DuelQueueInfo);
+	}
+	else if (rssn.nGameType == MMATCH_GAMETYPE_CTF)
+	{
+		g_iBytesRead += sizeof(MTD_CTFReplayInfo);
+	}
+	else if (rssn.nGameType == MMATCH_GAMETYPE_INFECTED)
+	{
+		g_iBytesRead += sizeof(MUID);
+	}
+	else if (rssn.nGameType == MMATCH_GAMETYPE_GUNGAME)
+	{
+		g_iBytesRead += sizeof(int);
+
+		int Count = 0;
+		read(Count);
+
+		for (int i = 0; i < Count; i++)
+		{
+			g_iBytesRead += sizeof(MTD_GunGameWeaponInfo);
+		}
+	}
+	else if (rssn.nGameType == MMATCH_GAMETYPE_DUELTOURNAMENT)
+	{
+		g_iBytesRead += sizeof(int);
+
+		int Count = 0;
+		read(Count);
+
+		for (int i = 0; i < Count; i++)
+		{
+			g_iBytesRead += sizeof(DTPlayerInfo);
+		}
+
+		g_iBytesRead += sizeof(MTD_DuelTournamentGameInfo);
 	}
 
 	// Position 527 holds the first char of the first ZCharacter's name in the proper V7 format, but holds an item count value in the interim V7 format.
@@ -113,20 +146,6 @@ std::vector<unsigned char> RepairFile(std::vector<unsigned char> File)
 	Print("Header: %08X\nVersion: V%d.0%s\n", header, version, bInterimV7 ? " (interim)" : "");
 
 	Print("Map name: %s\nStage name: %s\n", rssn.szMapName, rssn.szStageName);
-
-	// Print("Read count: %d\n", g_iBytesRead);
-	// for (int i = 0; i < 1000; i++)
-	// {
-		// Print("%02X ", InflatedFile[i]);
-		// if (i % 64 == 0)
-			// Print("\n");
-	// }
-	
-	// for (int i = 0; i < 10; i++)
-	// {
-		// Print("%08X\n", *(uint32_t *)(InflatedFile.data() + g_iBytesRead + i));
-		// Print("%d\n", g_iBytesRead + i);
-	// }
 	
 	int32_t CharCount = 0;
 	read(CharCount);
